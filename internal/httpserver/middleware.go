@@ -9,6 +9,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -49,6 +50,66 @@ func permissiveCORS(next http.Handler) http.Handler {
 			return
 		}
 		next.ServeHTTP(responseWriter, request)
+	})
+}
+
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+		nonce := httpx.CSPNonce(request.Context())
+		responseWriter.Header().Add("Content-Security-Policy", "default-src 'self' 'nonce-"+nonce+"'; script-src 'self' 'nonce-"+nonce+"'; style-src 'self'; img-src 'self' data:; frame-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self'")
+		responseWriter.Header().Add("X-Frame-Options", "SAMEORIGIN")
+		responseWriter.Header().Add("X-Content-Type-Options", "nosniff")
+		responseWriter.Header().Add("Referrer-Policy", "strict-origin-when-cross-origin")
+
+		responseWriter.Header().Add("Cross-Origin-Opener-Policy", "same-origin")
+		responseWriter.Header().Add("Cross-Origin-Resource-Policy", "same-origin")
+		responseWriter.Header().Add("Origin-Agent-Cluster", "?1")
+		responseWriter.Header().Add("X-DNS-Prefetch-Control", "off")
+		responseWriter.Header().Add("X-Download-Options", "noopen")
+		responseWriter.Header().Add("X-Permitted-Cross-Domain-Policies", "none")
+		responseWriter.Header().Add("X-XSS-Protection", "0")
+
+		if request.URL.Path == "/shipping-widget.css" || request.URL.Path == "/shipping-widget.js" {
+			responseWriter.Header().Set("Cross-Origin-Resource-Policy", "cross-origin")
+		}
+		next.ServeHTTP(responseWriter, request)
+	})
+}
+
+func originDetector(trustedOrigin string, renderer *templates.Renderer) middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != "POST" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			requestOrigin := r.Header.Get("Origin")
+			if requestOrigin == "" {
+				referer, err := url.Parse(r.Referer())
+				if err != nil {
+					httpx.RespondWithErrorPage(w, renderer, 403, "Forbidden", "Request source is missing, malformed, or untrusted")
+					return
+				}
+				referredOrigin := referer.Scheme + "://" + referer.Host
+				requestOrigin = referredOrigin
+			}
+			if requestOrigin != trustedOrigin {
+				httpx.RespondWithErrorPage(w, renderer, 403, "Forbidden", "Request source is missing, malformed, or untrusted")
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func setCSP(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+		nonce := httpx.CSPNonce(request.Context())
+		responseWriter.Header().Add("Content-Security-Policy", "default-src 'self' 'nonce-"+nonce+"'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self'")
+		responseWriter.Header().Add("X-Frame-Options", "SAMEORIGIN")
+		responseWriter.Header().Add("Referrer-Policy", "strict-origin-when-cross-origin")
+		next.ServeHTTP(responseWriter, request)
+		return
 	})
 }
 

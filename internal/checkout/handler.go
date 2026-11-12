@@ -83,6 +83,10 @@ func (handler *Handler) Submit(responseWriter http.ResponseWriter, request *http
 	if !ok {
 		return
 	}
+	if valid := sessions.CSRFTokensMatch(current.Session.CSRFToken, request.FormValue("csrfToken")); !valid {
+		handler.errorPage(responseWriter, http.StatusForbidden, "Invalid Request",  "Your request could not be verified.")
+		return
+	}
 	items, err := handler.cartStore.ListItems(request.Context(), current.User.ID)
 	if err != nil {
 		handler.internalError(responseWriter, request, err)
