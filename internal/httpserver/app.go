@@ -237,7 +237,7 @@ func New(database *sql.DB, logger *logging.Logger, options Options) (*Applicatio
 		cspNonce,
 		securityHeaders,
 		recoverPanics(logger, renderer),
-		originDetector(options.AppOrigin, renderer),
+ 		originDetector(options.AppOrigin, renderer),
 	)
 	return &Application{Handler: handler, publicRoot: publicRoot}, nil
 }

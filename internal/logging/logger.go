@@ -16,6 +16,15 @@ type Logger struct {
 	now   func() time.Time
 }
 
+var sensitiveFields = map[string]struct{}{
+	"sessionId":   {},
+	"resetToken":  {},
+	"resetLink":   {},
+	"secret":      {},
+	"adminNotes":  {},
+	"storagePath": {},
+}
+
 func Open(filePath string) (*Logger, error) {
 	if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
 		return nil, fmt.Errorf("create log directory: %w", err)
@@ -37,6 +46,11 @@ func (logger *Logger) Event(eventName string, fields map[string]any) error {
 		"event":     eventName,
 	}
 	maps.Copy(record, fields)
+	for field, _ := range record {
+		if _, sensitive := sensitiveFields[field]; sensitive {
+			record[field] = "[REDACTED]"
+		}
+	}
 
 	logger.mutex.Lock()
 	defer logger.mutex.Unlock()
